@@ -5,7 +5,7 @@ Reads a Python project and generates an interactive HTML visualization
 showing modules, classes, functions, and their call relationships.
 """
 
-from .analyzer import CodeAnalyzer
+from .analyzer import CodeAnalyzer, PackageInfo
 from .generator import HTMLGenerator
 
 
@@ -34,4 +34,4 @@ def visualize(project_path: str, output_path: str = "code_arc_output.html", titl
     return output_path
 
 
-__all__ = ["CodeAnalyzer", "HTMLGenerator", "visualize"]
+__all__ = ["CodeAnalyzer", "HTMLGenerator", "PackageInfo", "visualize"]
