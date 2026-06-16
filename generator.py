@@ -169,9 +169,9 @@ body.edges-on-top #edge-svg{z-index:50}
   box-shadow:0 8px 32px rgba(0,0,0,.35);transition:box-shadow .3s}
 .package-block:hover{box-shadow:0 8px 40px rgba(60,50,20,.35),0 0 0 1px rgba(90,74,42,.2)}
 .package-header{background:linear-gradient(135deg,#6a5a2a,#5a4a22);
-  padding:10px 16px;border-radius:12px 12px 0 0;font-size:13px;font-weight:700;
+  padding:10px 16px;border-radius:12px 12px 0 0;font-size:16px;font-weight:700;
   color:#e8d8a0;letter-spacing:.4px;user-select:none;display:flex;align-items:center;
-  gap:8px;cursor:pointer;transition:background .2s}
+  justify-content:center;gap:8px;cursor:pointer;transition:background .2s}
 .package-header:hover{background:linear-gradient(135deg,#7a6a3a,#6a5a2a)}
 .package-header .pi{width:20px;height:20px;border-radius:4px;background:rgba(255,255,255,.12);
   display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
