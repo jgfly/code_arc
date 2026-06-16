@@ -70,8 +70,13 @@ class HTMLGenerator:
         return node
 
     def _module_to_json(self, module: ModuleInfo) -> dict:
-        module_node = {"id": module.name, "type": "module", "name": module.name,
-            "label": module.name.split(".")[-1] or module.name,
+        # __init__.py shares its dotted name with its package; give it a distinct id
+        # so package and module DOM nodes don't collide in EM[id].
+        is_init = module.file_path.replace("\\", "/").endswith("/__init__.py")
+        node_id = module.name + ".__init__" if is_init else module.name
+        label = "__init__" if is_init else (module.name.split(".")[-1] or module.name)
+        module_node = {"id": node_id, "type": "module", "name": module.name,
+            "label": label,
             "full_name": module.name, "file_path": module.file_path, "children": []}
         for cls in module.classes:
             class_node = {"id": cls.full_name, "type": "class", "name": cls.name,
@@ -497,7 +502,7 @@ function buildMethod(m){
 }
 
 // ========== Grid Layout — bottom-up, max 16 per row, generous gaps ==========
-var MAX_PER_ROW=16;
+var MAX_PER_ROW=8;
 var PKG_HDR_H=38;
 var PKG_PAD=20;       // padding inside package around children
 var LEAF_GAP=24;      // gap between leaf modules (same level)
