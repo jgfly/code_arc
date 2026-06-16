@@ -465,7 +465,7 @@ def _parse_module(args: tuple[str, str]) -> ModuleInfo:
     """Parse a single module (top-level function for ProcessPoolExecutor)."""
     file_path, module_name = args
     try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, "r", encoding="utf-8-sig", errors="replace") as f:
             source = f.read()
     except (OSError, UnicodeDecodeError):
         return ModuleInfo(name=module_name, file_path=file_path)
