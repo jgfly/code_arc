@@ -749,8 +749,70 @@ cvs.addEventListener('click',function(e){
     if(lockedId){lockedId=null;clearAllEdgeHL();clearBlockHL();}
 });
 
-function highlightEdgesFor(id,on){var paths=svg.querySelectorAll('.e');for(var i=0;i<paths.length;i++){var p=paths[i],s=p.dataset.source,t=p.dataset.target;var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');if(connected){highlightEdge(p,on);if(on){var hit=p.previousElementSibling;if(hit&&hit.classList.contains('e-hit'))hit.parentNode.appendChild(hit);p.parentNode.appendChild(p);}}}}
-function clearAllEdgeHL(){var paths=svg.querySelectorAll('.e');for(var i=0;i<paths.length;i++)highlightEdge(paths[i],false);}
+function highlightEdgesFor(id,on){
+    if(on){
+        // Highlight existing drawn edges connected to this block
+        var paths=svg.querySelectorAll('.e');
+        var existingKeys={};
+        for(var i=0;i<paths.length;i++){
+            var p=paths[i],s=p.dataset.source,t=p.dataset.target;
+            existingKeys[s+'|'+t+'|'+p.dataset.edgeType]=true;
+            var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');
+            if(connected){
+                highlightEdge(p,true);
+                var hit=p.previousElementSibling;
+                if(hit&&hit.classList.contains('e-hit'))hit.parentNode.appendChild(hit);
+                p.parentNode.appendChild(p);
+            }
+        }
+        // Bypass maxEdges sampling: temporarily draw every edge connected to this block
+        var pos=measure();
+        function addTemp(s,t,type){
+            var key=s+'|'+t+'|'+type;
+            if(existingKeys[key])return;
+            var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');
+            if(!connected)return;
+            if(!findPos(s,pos)||!findPos(t,pos))return;
+            var svgChildBefore=svg.children.length;
+            var dotCountBefore=cvs.querySelectorAll('.conn-dot').length;
+            createEdgePath(s,t,type,pos);
+            for(var k=svgChildBefore;k<svg.children.length;k++){
+                var ch=svg.children[k];
+                if(ch.classList&&(ch.classList.contains('e')||ch.classList.contains('e-hit'))){
+                    ch.classList.add('e-temp');
+                    ch.dataset.tempFor=id;
+                }
+            }
+            var dots=cvs.querySelectorAll('.conn-dot');
+            for(var k=dotCountBefore;k<dots.length;k++){
+                dots[k].classList.add('temp');
+                dots[k].dataset.tempFor=id;
+            }
+            var newPath=svg.lastElementChild;
+            if(newPath&&newPath.classList.contains('e'))highlightEdge(newPath,true);
+            existingKeys[key]=true;
+        }
+        if(showCalls)ED.forEach(function(e){addTemp(e.source,e.target,'call');});
+        if(showInherit)ID.forEach(function(e){addTemp(e.source,e.target,'inherit');});
+    }else{
+        // Remove temp edges/dots that were added for this block only
+        var temps=svg.querySelectorAll('.e-temp');
+        for(var i=0;i<temps.length;i++)if(temps[i].dataset.tempFor===id)temps[i].remove();
+        var tempDots=cvs.querySelectorAll('.conn-dot.temp');
+        for(var i=0;i<tempDots.length;i++)if(tempDots[i].dataset.tempFor===id)tempDots[i].remove();
+        var paths=svg.querySelectorAll('.e');
+        for(var i=0;i<paths.length;i++){
+            var p=paths[i],s=p.dataset.source,t=p.dataset.target;
+            var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');
+            if(connected)highlightEdge(p,false);
+        }
+    }
+}
+function clearAllEdgeHL(){
+    var temps=svg.querySelectorAll('.e-temp');for(var i=0;i<temps.length;i++)temps[i].remove();
+    var tempDots=cvs.querySelectorAll('.conn-dot.temp');for(var i=0;i<tempDots.length;i++)tempDots[i].remove();
+    var paths=svg.querySelectorAll('.e');for(var i=0;i<paths.length;i++)highlightEdge(paths[i],false);
+}
 
 function showTip(e,text){tip.textContent=text;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px';}
 function hideTip(){tip.style.display='none';}
