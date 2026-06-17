@@ -239,7 +239,7 @@ body.edges-on-top #edge-svg{z-index:50}
   font-family:'Cascadia Code','Fira Code','Consolas',monospace;line-height:1.4;word-break:break-all}
 
 /* Source panel */
-#source-panel{position:fixed;top:50px;right:-540px;width:520px;bottom:0;
+#source-panel{position:fixed;top:50px;right:-760px;width:720px;bottom:0;
   background:#0e0f22;border-left:1px solid #222340;z-index:90;
   transition:right .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;
   box-shadow:-8px 0 32px rgba(0,0,0,.5)}
