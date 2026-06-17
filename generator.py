@@ -256,7 +256,13 @@ body.edges-on-top #edge-svg{z-index:50}
 #sp-close:hover{background:#222340;color:#ddd}
 #sp-code{flex:1;overflow:auto;padding:14px 16px;
   font-family:'Cascadia Code','Fira Code','Consolas',monospace;
-  font-size:12px;line-height:1.7;white-space:pre;color:#a8a8c8;tab-size:4}
+  font-size:12px;line-height:1.7;white-space:pre;color:#d4d4d4;tab-size:4}
+#sp-code .sk{color:#c586c0}#sp-code .sb{color:#4ec9b0}
+#sp-code .ss{color:#ce9178}#sp-code .sc{color:#6a9955;font-style:italic}
+#sp-code .sn{color:#b5cea8}#sp-code .sd{color:#dcdcaa}
+#sp-code .sl{color:#4fc1ff}#sp-code .so{color:#d4d4d4}
+#sp-code .sp{color:#808080}#sp-code .sf{color:#dcdcaa}
+#sp-code .st{color:#4ec9b0}
 
 /* Navigation minimap */
 #minimap{position:fixed;bottom:16px;right:16px;width:200px;height:140px;
@@ -653,10 +659,100 @@ function layoutNode(node,parentX,parentY){
     }
 }
 
+// ========== Syntax Highlighting (Python) ==========
+var KW='await|break|continue|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|and|as|pass|raise|return|try|while|with|yield|async|def|class'.split('|');
+var BI='print|len|range|enumerate|zip|map|filter|sorted|reversed|iter|next|id|hash|type|isinstance|issubclass|super|getattr|setattr|delattr|hasattr|callable|property|staticmethod|classmethod|abs|all|any|bin|bool|bytearray|bytes|chr|complex|dict|dir|divmod|eval|exec|float|format|frozenset|hex|input|int|list|max|min|object|oct|open|ord|pow|repr|round|set|slice|str|sum|tuple|vars|__import__|Exception|BaseException|ValueError|TypeError|KeyError|IndexError|AttributeError|RuntimeError|StopIteration|GeneratorExit|KeyboardInterrupt|OverflowError|ZeroDivisionError|FileNotFoundError|ImportError|ModuleNotFoundError|NameError|UnboundLocalError|OSError|IOError|EOFError|MemoryError|RecursionError|NotImplementedError|AssertionError|ArithmeticError|LookupError|Warning|UserWarning|DeprecationWarning|FutureWarning|PendingDeprecationWarning|RuntimeWarning|SyntaxWarning|ResourceWarning|BufferWarning'.split('|');
+var KW_SET=new Set(KW),BI_SET=new Set(BI);
+// Build triple-quote regexes as strings to avoid raw-string delimiter conflict
+var DQ3='"'+'""', SQ3="'"+"''";
+var RE_TRI=new RegExp('(?:[rRbBfF]{0,2})(?:'+DQ3+'[\\s\\S]*?'+DQ3+'|'+SQ3+'[\\s\\S]*?'+SQ3+')','y');
+var RE_STR=new RegExp('(?:[rRbBfF]{0,2})(?:"(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\')','y');
+var RE_CMT=/#.*/y;
+var RE_DECOR=/@[\w.]+/y;
+var RE_NUM=/(?:0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|(?:\d[.\d_]*)(?:[eE][+-]?\d+)?)(?:jJ)?/y;
+var RE_IDENT=/[a-zA-Z_]\w*/y;
+var RE_OP=/(?::=|\*\*|\/\/|<<|>>|->|==|!=|<=|>=|[+\-*/%&|^~<>!=])/y;
+var RE_PUNCT=/[(){}\[\],;:.@]/y;
+function highlightPython(code){
+  var out=[],i=0,len=code.length,lastKW='';
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function span(cls,txt){out.push('<span class="',cls,'">',esc(txt),'</span>');}
+  function plain(txt){out.push(esc(txt));}
+  function tryRx(rx){
+    rx.lastIndex=i;
+    var m=rx.exec(code);
+    if(m&&m.index===i)return m[0];
+    return null;
+  }
+  while(i<len){
+    var ch=code[i];
+    // whitespace
+    if(ch===' '||ch==='\t'||ch==='\n'||ch==='\r'){
+      var j=i+1;while(j<len&&' \t\n\r'.indexOf(code[j])>=0)j++;
+      plain(code.substring(i,j));i=j;lastKW='';continue;
+    }
+    // triple-quoted string
+    var m=tryRx(RE_TRI);
+    if(m){span('ss',m);i+=m.length;lastKW='';continue;}
+    // single-line string
+    m=tryRx(RE_STR);
+    if(m){span('ss',m);i+=m.length;lastKW='';continue;}
+    // comment
+    m=tryRx(RE_CMT);
+    if(m){span('sc',m);i+=m.length;lastKW='';continue;}
+    // decorator (only if at line start context: preceded by newline or start, and @)
+    if(ch==='@'){
+      var prev=code.substring(Math.max(0,i-30),i);
+      if(/(?:^|[\n\r])\s*$/.test(prev)){
+        m=tryRx(RE_DECOR);
+        if(m){span('sd',m);i+=m.length;lastKW='';continue;}
+      }
+    }
+    // number (must not be preceded by identifier char)
+    if((ch>='0'&&ch<='9')&&!(i>0&&/[a-zA-Z_]/.test(code[i-1]))){
+      m=tryRx(RE_NUM);
+      if(m){span('sn',m);i+=m.length;lastKW='';continue;}
+    }
+    // identifier / keyword / builtin / self
+    if(/[a-zA-Z_]/.test(ch)){
+      m=tryRx(RE_IDENT);
+      if(m){
+        if(KW_SET.has(m)){
+          span('sk',m);
+          lastKW=m;
+        }else if(m==='self'||m==='cls'){
+          span('sl',m);lastKW='';
+        }else if(m==='True'||m==='False'||m==='None'||m==='__name__'||m==='__all__'||m==='__doc__'||m==='__init__'){
+          span('sb',m);lastKW='';
+        }else if(BI_SET.has(m)){
+          span('sb',m);lastKW='';
+        }else if(lastKW==='def'){
+          span('sf',m);lastKW='';
+        }else if(lastKW==='class'){
+          span('st',m);lastKW='';
+        }else{
+          plain(m);lastKW='';
+        }
+        i+=m.length;continue;
+      }
+    }
+    // operator
+    m=tryRx(RE_OP);
+    if(m){span('so',m);i+=m.length;lastKW='';continue;}
+    // punctuation
+    m=tryRx(RE_PUNCT);
+    if(m){span('sp',m);i+=m.length;lastKW='';continue;}
+    // fallback: single char
+    plain(ch);i++;lastKW='';
+  }
+  return out.join('');
+}
+
 // ========== Source Panel ==========
 function openSource(item){
     document.getElementById('sp-title').textContent=item.full_name||item.id;
-    document.getElementById('sp-code').textContent=SD[item.full_name||item.id]||'(Source not available)';
+    var code=SD[item.full_name||item.id]||'(Source not available)';
+    document.getElementById('sp-code').innerHTML=highlightPython(code);
     document.getElementById('source-panel').classList.add('open');
 }
 document.getElementById('sp-close').addEventListener('click',function(){var sp=document.getElementById('source-panel');sp.classList.remove('open');sp.style.width='';});
@@ -757,7 +853,7 @@ if(ND.type==='package'){buildSourceMap(ND);}else{ND.forEach(function(m){m.childr
 cvs.addEventListener('click',function(e){
     var dot=e.target.closest('.conn-dot');if(dot){e.stopPropagation();navigateToBlock(dot.dataset.navId);return;}
     var block=e.target.closest('[data-id]');
-    if(block){var id=block.dataset.id;if(lockedId&&lockedId!==id){clearAllEdgeHL();clearBlockHL();}lockedId=id;highlightEdgesFor(id,true);hlBlocks(id);var item=sourceMap[id];if(item){openSource(item);}else{document.getElementById('sp-title').textContent=id;document.getElementById('sp-code').textContent=SD[id]||'(Source not available)';document.getElementById('source-panel').classList.add('open');}e.stopPropagation();return;}
+    if(block){var id=block.dataset.id;if(lockedId&&lockedId!==id){clearAllEdgeHL();clearBlockHL();}lockedId=id;highlightEdgesFor(id,true);hlBlocks(id);var item=sourceMap[id];if(item){openSource(item);}else{document.getElementById('sp-title').textContent=id;var code=SD[id]||'(Source not available)';document.getElementById('sp-code').innerHTML=highlightPython(code);document.getElementById('source-panel').classList.add('open');}e.stopPropagation();return;}
     if(lockedId){lockedId=null;clearAllEdgeHL();clearBlockHL();}
 });
 
