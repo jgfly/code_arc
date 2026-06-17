@@ -106,6 +106,10 @@ class CallVisitor(ast.NodeVisitor):
                 parts.append(current.id)
             parts.reverse()
             return ".".join(parts)
+        elif isinstance(node, ast.Subscript):
+            # Triton kernel call syntax: kernel[grid](args)
+            # The callable is node.value (the kernel name before the brackets)
+            return self._resolve_call_name(node.value)
         return None
 
 
@@ -685,6 +689,31 @@ class CodeAnalyzer:
                     if new_key not in seen:
                         resolved.append((caller, known))
                         seen.add(new_key)
+                    continue
+
+            # Project root prefix stripping: from_imports may produce FQNs
+            # with an absolute package prefix (e.g. "nanovllm.utils.context.get_context")
+            # while known_funcs uses relative paths (e.g. "utils.context.get_context").
+            # Try stripping leading dotted prefixes until we match a known symbol.
+            if not matched:
+                stripped = callee
+                while "." in stripped:
+                    stripped = stripped.split(".", 1)[1]
+                    if stripped in known_funcs:
+                        new_key = (caller, stripped)
+                        if new_key not in seen:
+                            resolved.append((caller, stripped))
+                            seen.add(new_key)
+                        matched = True
+                        break
+                    if stripped in known_classes:
+                        target = known_classes[stripped]
+                        new_key = (caller, target)
+                        if new_key not in seen:
+                            resolved.append((caller, target))
+                            seen.add(new_key)
+                        matched = True
+                        break
 
         return resolved
 
