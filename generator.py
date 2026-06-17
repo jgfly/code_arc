@@ -256,7 +256,7 @@ body.edges-on-top #edge-svg{z-index:50}
 #sp-close:hover{background:#222340;color:#ddd}
 #sp-code{flex:1;overflow:auto;padding:14px 16px;
   font-family:'Cascadia Code','Fira Code','Consolas',monospace;
-  font-size:12px;line-height:1.7;white-space:pre;color:#d4d4d4;tab-size:4}
+  font-size:12px;line-height:1.7;white-space:pre;color:#a8a8c8;tab-size:4}
 #sp-code .sk{color:#c586c0}#sp-code .sb{color:#4ec9b0}
 #sp-code .ss{color:#ce9178}#sp-code .sc{color:#6a9955;font-style:italic}
 #sp-code .sn{color:#b5cea8}#sp-code .sd{color:#dcdcaa}
@@ -663,8 +663,7 @@ function layoutNode(node,parentX,parentY){
 var KW='await|break|continue|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|and|as|pass|raise|return|try|while|with|yield|async|def|class'.split('|');
 var BI='print|len|range|enumerate|zip|map|filter|sorted|reversed|iter|next|id|hash|type|isinstance|issubclass|super|getattr|setattr|delattr|hasattr|callable|property|staticmethod|classmethod|abs|all|any|bin|bool|bytearray|bytes|chr|complex|dict|dir|divmod|eval|exec|float|format|frozenset|hex|input|int|list|max|min|object|oct|open|ord|pow|repr|round|set|slice|str|sum|tuple|vars|__import__|Exception|BaseException|ValueError|TypeError|KeyError|IndexError|AttributeError|RuntimeError|StopIteration|GeneratorExit|KeyboardInterrupt|OverflowError|ZeroDivisionError|FileNotFoundError|ImportError|ModuleNotFoundError|NameError|UnboundLocalError|OSError|IOError|EOFError|MemoryError|RecursionError|NotImplementedError|AssertionError|ArithmeticError|LookupError|Warning|UserWarning|DeprecationWarning|FutureWarning|PendingDeprecationWarning|RuntimeWarning|SyntaxWarning|ResourceWarning|BufferWarning'.split('|');
 var KW_SET=new Set(KW),BI_SET=new Set(BI);
-// Build triple-quote regexes as strings to avoid raw-string delimiter conflict
-var DQ3='"'+'""', SQ3="'"+"''";
+var DQ3='"'+'""',SQ3="'"+"''";
 var RE_TRI=new RegExp('(?:[rRbBfF]{0,2})(?:'+DQ3+'[\\s\\S]*?'+DQ3+'|'+SQ3+'[\\s\\S]*?'+SQ3+')','y');
 var RE_STR=new RegExp('(?:[rRbBfF]{0,2})(?:"(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\')','y');
 var RE_CMT=/#.*/y;
@@ -686,21 +685,16 @@ function highlightPython(code){
   }
   while(i<len){
     var ch=code[i];
-    // whitespace
     if(ch===' '||ch==='\t'||ch==='\n'||ch==='\r'){
       var j=i+1;while(j<len&&' \t\n\r'.indexOf(code[j])>=0)j++;
-      plain(code.substring(i,j));i=j;lastKW='';continue;
+      plain(code.substring(i,j));i=j;continue;
     }
-    // triple-quoted string
     var m=tryRx(RE_TRI);
     if(m){span('ss',m);i+=m.length;lastKW='';continue;}
-    // single-line string
     m=tryRx(RE_STR);
     if(m){span('ss',m);i+=m.length;lastKW='';continue;}
-    // comment
     m=tryRx(RE_CMT);
     if(m){span('sc',m);i+=m.length;lastKW='';continue;}
-    // decorator (only if at line start context: preceded by newline or start, and @)
     if(ch==='@'){
       var prev=code.substring(Math.max(0,i-30),i);
       if(/(?:^|[\n\r])\s*$/.test(prev)){
@@ -708,41 +702,27 @@ function highlightPython(code){
         if(m){span('sd',m);i+=m.length;lastKW='';continue;}
       }
     }
-    // number (must not be preceded by identifier char)
     if((ch>='0'&&ch<='9')&&!(i>0&&/[a-zA-Z_]/.test(code[i-1]))){
       m=tryRx(RE_NUM);
       if(m){span('sn',m);i+=m.length;lastKW='';continue;}
     }
-    // identifier / keyword / builtin / self
     if(/[a-zA-Z_]/.test(ch)){
       m=tryRx(RE_IDENT);
       if(m){
-        if(KW_SET.has(m)){
-          span('sk',m);
-          lastKW=m;
-        }else if(m==='self'||m==='cls'){
-          span('sl',m);lastKW='';
-        }else if(m==='True'||m==='False'||m==='None'||m==='__name__'||m==='__all__'||m==='__doc__'||m==='__init__'){
-          span('sb',m);lastKW='';
-        }else if(BI_SET.has(m)){
-          span('sb',m);lastKW='';
-        }else if(lastKW==='def'){
-          span('sf',m);lastKW='';
-        }else if(lastKW==='class'){
-          span('st',m);lastKW='';
-        }else{
-          plain(m);lastKW='';
-        }
+        if(KW_SET.has(m)){span('sk',m);lastKW=m;}
+        else if(m==='self'||m==='cls'){span('sl',m);lastKW='';}
+        else if(m==='True'||m==='False'||m==='None'||m==='__name__'||m==='__all__'||m==='__doc__'||m==='__init__'){span('sb',m);lastKW='';}
+        else if(BI_SET.has(m)){span('sb',m);lastKW='';}
+        else if(lastKW==='def'){span('sf',m);lastKW='';}
+        else if(lastKW==='class'){span('st',m);lastKW='';}
+        else{plain(m);lastKW='';}
         i+=m.length;continue;
       }
     }
-    // operator
     m=tryRx(RE_OP);
     if(m){span('so',m);i+=m.length;lastKW='';continue;}
-    // punctuation
     m=tryRx(RE_PUNCT);
     if(m){span('sp',m);i+=m.length;lastKW='';continue;}
-    // fallback: single char
     plain(ch);i++;lastKW='';
   }
   return out.join('');
