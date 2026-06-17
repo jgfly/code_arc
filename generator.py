@@ -289,6 +289,32 @@ body.edges-on-top #edge-svg{z-index:50}
 .func-block.search-hit,.method-block.search-hit{border-color:#ffd54f!important;box-shadow:0 0 0 2px #ffd54f60!important}
 .block-hl{box-shadow:0 0 0 2px rgba(100,181,246,.5),0 0 16px rgba(100,181,246,.15)!important}
 
+/* Per-block connection list button + dropdown */
+.nav-btn{position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:4px;
+  background:#222340cc;border:1px solid #444470;color:#aab0d0;font-size:10px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6;
+  opacity:0;pointer-events:none;transition:opacity .15s,background .15s;line-height:1;
+  user-select:none}
+.nav-btn:hover{background:#2a2a55;color:#fff}
+[data-id]:hover .nav-btn{opacity:1;pointer-events:auto}
+#nav-menu{position:fixed;z-index:300;background:#12132af0;border:1px solid #333360;
+  border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);display:none;min-width:200px;
+  max-width:340px;backdrop-filter:blur(8px);overflow:hidden}
+#nav-menu.open{display:block}
+#nav-menu .nm-hdr{padding:7px 10px;font-size:11px;color:#8888aa;border-bottom:1px solid #222340;
+  font-family:'Cascadia Code','Fira Code',monospace;word-break:break-all}
+#nav-menu .nm-list{max-height:300px;overflow-y:auto}
+#nav-menu .nm-item{padding:6px 12px;font-size:12px;color:#c0c0e0;cursor:pointer;display:flex;
+  align-items:center;gap:8px;font-family:'Cascadia Code','Fira Code',monospace;word-break:break-all}
+#nav-menu .nm-item:hover{background:#222250;color:#fff}
+#nav-menu .nm-dir{width:12px;flex-shrink:0;text-align:center;font-weight:700}
+#nav-menu .nm-dir.out{color:#5b9bd5}
+#nav-menu .nm-dir.in{color:#c8a050}
+#nav-menu .nm-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+#nav-menu .nm-dot.call{background:#5b9bd5}
+#nav-menu .nm-dot.inherit{background:#ff6b6b}
+#nav-menu .nm-empty{padding:12px;font-size:11px;color:#666;text-align:center}
+
 /* Legend */
 #legend{position:fixed;bottom:16px;left:16px;background:#12132af0;border:1px solid #222340;
   border-radius:10px;padding:12px 16px;z-index:100;font-size:11px;backdrop-filter:blur(8px)}
@@ -375,6 +401,7 @@ body.edges-on-top #edge-svg{z-index:50}
 </div>
 <div id="zoom">100%</div>
 <div id="tip"></div>
+<div id="nav-menu"></div>
 <script id="d-nodes" type="application/json">{nodes_json}</script>
 <script id="d-edges" type="application/json">{edges_json}</script>
 <script id="d-inherit" type="application/json">{inheritance_json}</script>
@@ -403,6 +430,16 @@ var svg=document.getElementById('edge-svg');
 var tip=document.getElementById('tip');
 var zoomEl=document.getElementById('zoom');
 var EM={};var pkgDepthMap=new Map();var maxPkgDepth=-1;
+
+// Precompute the set of block ids that participate in any edge (including
+// ancestor package/module/class blocks of leaf endpoints), so we only render
+// the connection button on blocks that actually have connections.
+var connectedBlockIds=new Set();
+(function(){
+  function note(ep){var parts=ep.split('.');for(var i=parts.length;i>=1;i--)connectedBlockIds.add(parts.slice(0,i).join('.'));}
+  ED.forEach(function(e){note(e.source);note(e.target);});
+  ID.forEach(function(e){note(e.source);note(e.target);});
+})();
 
 var posCache=null,posDirty=true;
 
@@ -463,6 +500,7 @@ function buildPackageFlat(pkg,depth){
     hdr.addEventListener('mouseenter',function(){hdr.style.background='linear-gradient(135deg,'+dc.hover1+','+dc.hover2+')';});
     hdr.addEventListener('mouseleave',function(){hdr.style.background='linear-gradient(135deg,'+dc.hdr1+','+dc.hdr2+')';});
     el.appendChild(hdr);
+    addNavBtn(el,pkg.id);
     cvs.appendChild(el);EM[pkg.id]=el;pkgDepthMap.set(pkg.id,depth);if(depth>maxPkgDepth)maxPkgDepth=depth;
     pkg.children.forEach(function(ch){
         if(ch.type==='package')buildPackageFlat(ch,depth+1);
@@ -480,7 +518,7 @@ function buildModule(mod){
     el.appendChild(hdr);
     var body=document.createElement('div');body.className='module-body';
     mod.children.forEach(function(ch){body.appendChild(ch.type==='class'?buildClass(ch):buildFunc(ch));});
-    el.appendChild(body);return el;
+    el.appendChild(body);addNavBtn(el,mod.id);return el;
 }
 function buildClass(cls){
     var el=document.createElement('div');el.className='class-block';el.dataset.id=cls.id;
@@ -491,7 +529,7 @@ function buildClass(cls){
     el.appendChild(hdr);
     if(cls.init_params&&cls.init_params.length>0){var p=document.createElement('div');p.className='class-params';p.innerHTML='<span class="pl">init</span>('+cls.init_params.map(function(x){return esc(x);}).join(', ')+')';el.appendChild(p);}
     if(cls.children&&cls.children.length>0){var cb=document.createElement('div');cb.className='class-body';cls.children.forEach(function(m){cb.appendChild(buildMethod(m));});el.appendChild(cb);}
-    return el;
+    addNavBtn(el,cls.id);return el;
 }
 function buildFunc(fn){
     var el=document.createElement('div');el.className='func-block';el.dataset.id=fn.id;
@@ -501,7 +539,7 @@ function buildFunc(fn){
     hdr.innerHTML=h;hdr.addEventListener('click',function(ev){ev.stopPropagation();openSource(fn);});
     el.appendChild(hdr);
     if(fn.params&&fn.params.length>0){var s=document.createElement('div');s.className='func-signature';s.textContent='('+fn.params.join(', ')+')';el.appendChild(s);}
-    return el;
+    addNavBtn(el,fn.id);return el;
 }
 function buildMethod(m){
     var el=document.createElement('div');el.className='method-block';el.dataset.id=m.id;
@@ -511,8 +549,63 @@ function buildMethod(m){
     hdr.innerHTML=h;hdr.addEventListener('click',function(ev){ev.stopPropagation();openSource(m);});
     el.appendChild(hdr);
     if(m.params&&m.params.length>0){var s=document.createElement('div');s.className='method-signature';s.textContent='('+m.params.join(', ')+')';el.appendChild(s);}
-    return el;
+    addNavBtn(el,m.id);return el;
 }
+
+// ========== Per-block connection list (dropdown) ==========
+function addNavBtn(el,id){
+    if(!connectedBlockIds.has(id))return;
+    var b=document.createElement('div');b.className='nav-btn';b.textContent='⇄';
+    b.title='View connections';
+    b.addEventListener('click',function(ev){ev.stopPropagation();openNavMenu(id,ev.clientX,ev.clientY);});
+    el.appendChild(b);
+}
+function getConnections(blockId){
+    // Collect connected edges: an edge is connected if either endpoint equals
+    // blockId or sits under it (blockId + '.'). Internal edges (both sides under
+    // blockId) are skipped. The "other" endpoint is what we can navigate to.
+    var map={};
+    function add(other,dir,type){if(!map[other])map[other]={dirs:{},types:{}};map[other].dirs[dir]=1;map[other].types[type]=1;}
+    function handle(s,t,type){
+        var sHere=s===blockId||s.startsWith(blockId+'.'),tHere=t===blockId||t.startsWith(blockId+'.');
+        if(sHere&&tHere)return;
+        if(sHere)add(t,'out',type);else if(tHere)add(s,'in',type);
+    }
+    ED.forEach(function(e){handle(e.source,e.target,'call');});
+    ID.forEach(function(e){handle(e.source,e.target,'inherit');});
+    return Object.keys(map).sort().map(function(k){return {other:k,dirs:map[k].dirs,types:map[k].types};});
+}
+var navMenu=document.getElementById('nav-menu');
+function closeNavMenu(){navMenu.classList.remove('open');navMenu.innerHTML='';}
+function openNavMenu(id,x,y){
+    var conns=getConnections(id);
+    navMenu.innerHTML='';
+    var h=document.createElement('div');h.className='nm-hdr';
+    h.textContent=id+'  ('+conns.length+')';navMenu.appendChild(h);
+    var list=document.createElement('div');list.className='nm-list';
+    if(conns.length===0){var em=document.createElement('div');em.className='nm-empty';em.textContent='No connections';list.appendChild(em);}
+    conns.forEach(function(c){
+        var it=document.createElement('div');it.className='nm-item';
+        var both=c.dirs.out&&c.dirs.in;
+        var dir=document.createElement('span');dir.className='nm-dir '+(c.dirs.out?'out':'in');
+        dir.textContent=both?'⇄':(c.dirs.out?'→':'←');it.appendChild(dir);
+        if(c.types.call){var d1=document.createElement('span');d1.className='nm-dot call';it.appendChild(d1);}
+        if(c.types.inherit){var d2=document.createElement('span');d2.className='nm-dot inherit';it.appendChild(d2);}
+        var lab=document.createElement('span');lab.textContent=c.other.split('.').slice(-2).join('.');lab.title=c.other;
+        it.appendChild(lab);
+        it.addEventListener('click',function(ev){ev.stopPropagation();navigateToBlock(c.other);closeNavMenu();});
+        list.appendChild(it);
+    });
+    navMenu.appendChild(list);
+    navMenu.style.left='0px';navMenu.style.top='0px';navMenu.classList.add('open');
+    var mw=navMenu.offsetWidth,mh=navMenu.offsetHeight;
+    var nx=Math.max(8,Math.min(x,window.innerWidth-mw-8));
+    var ny=Math.max(8,Math.min(y,window.innerHeight-mh-8));
+    navMenu.style.left=nx+'px';navMenu.style.top=ny+'px';
+}
+// Close the dropdown on outside mousedown (nav-btn clicks stopPropagation, so
+// they re-open rather than close).
+document.addEventListener('mousedown',function(e){if(navMenu.classList.contains('open')&&!navMenu.contains(e.target))closeNavMenu();});
 
 // ========== Grid Layout — bottom-up, max 16 per row, generous gaps ==========
 var MAX_PER_ROW=8;
@@ -913,7 +1006,7 @@ function hideTip(){tip.style.display='none';}
 
 function updateTx(){cvs.style.transform='translate('+panX+'px,'+panY+'px) scale('+scale+')';zoomEl.textContent=Math.round(scale*100)+'%';}
 
-ctnr.addEventListener('mousedown',function(e){if(e.target.closest('[data-id]')||e.target.closest('.e')||e.target.closest('.e-hit'))return;dragging=true;dsx=e.clientX;dsy=e.clientY;psx=panX;psy=panY;ctnr.classList.add('grabbing');});
+ctnr.addEventListener('mousedown',function(e){if(e.target.closest('[data-id]')||e.target.closest('.e')||e.target.closest('.e-hit'))return;closeNavMenu();dragging=true;dsx=e.clientX;dsy=e.clientY;psx=panX;psy=panY;ctnr.classList.add('grabbing');});
 window.addEventListener('mousemove',function(e){if(!dragging)return;panX=psx+(e.clientX-dsx);panY=psy+(e.clientY-dsy);updateTx();scheduleDrawEdges();updateMinimap();});
 window.addEventListener('mouseup',function(){dragging=false;ctnr.classList.remove('grabbing');});
 
@@ -976,7 +1069,7 @@ window.addEventListener('mousemove',function(e){if(!mmResizing)return;var dx=e.c
 window.addEventListener('mouseup',function(){mmResizing=false;});
 new ResizeObserver(function(){updateMinimap();}).observe(mmEl);
 
-document.addEventListener('keydown',function(e){if(e.target.id==='search-box'||e.target.id==='edge-limit'){if(e.key==='Escape'){e.target.blur();}return;}if(e.key==='f'||e.key==='F')fitToScreen();else if(e.key==='Escape'){document.getElementById('source-panel').classList.remove('open');clearSearch();document.getElementById('search-box').value='';searchTerm='';lockedId=null;clearAllEdgeHL();clearBlockHL();}else if(e.key==='/'||(e.ctrlKey&&e.key==='f')){e.preventDefault();document.getElementById('search-box').focus();}});
+document.addEventListener('keydown',function(e){if(e.target.id==='search-box'||e.target.id==='edge-limit'){if(e.key==='Escape'){e.target.blur();}return;}if(e.key==='f'||e.key==='F')fitToScreen();else if(e.key==='Escape'){closeNavMenu();document.getElementById('source-panel').classList.remove('open');clearSearch();document.getElementById('search-box').value='';searchTerm='';lockedId=null;clearAllEdgeHL();clearBlockHL();}else if(e.key==='/'||(e.ctrlKey&&e.key==='f')){e.preventDefault();document.getElementById('search-box').focus();}});
 
 buildAll();
 // Populate package level selector based on discovered depths
