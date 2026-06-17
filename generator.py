@@ -143,6 +143,10 @@ body{font-family:'Segoe UI','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
 #edge-limit{width:52px;padding:4px 6px;border-radius:6px;border:1px solid #222340;
   background:#181930;color:#8888aa;font-size:12px;text-align:center;outline:none}
 #edge-limit:focus{border-color:#4488bb;color:#bbb}
+#pkg-level{padding:4px 6px;border-radius:6px;border:1px solid #222340;
+  background:#181930;color:#8888aa;font-size:12px;outline:none;cursor:pointer}
+#pkg-level:focus{border-color:#4488bb;color:#bbb}
+#pkg-level option{background:#181930;color:#8888aa}
 
 #canvas-container{position:fixed;top:50px;left:0;right:0;bottom:0;
   overflow:hidden;cursor:grab;
@@ -317,6 +321,9 @@ body.edges-on-top #edge-svg{z-index:50}
     <button class="toolbar-btn active" id="btn-edges" title="Toggle all edges">Edges</button>
     <button class="toolbar-btn active" id="btn-calls" title="Toggle call edges">Calls</button>
     <button class="toolbar-btn active" id="btn-inherit" title="Toggle inheritance edges">Inherit</button>
+    <select id="pkg-level" title="Show package edges for this depth and below">
+      <option value="none" selected>None</option>
+    </select>
     <button class="toolbar-btn" id="btn-top" title="Edges on top layer">Edges Top</button>
     <button class="toolbar-btn" id="btn-collapse" title="Collapse all">Collapse</button>
     <div class="toolbar-sep"></div>
@@ -389,7 +396,7 @@ var cvs=document.getElementById('canvas');
 var svg=document.getElementById('edge-svg');
 var tip=document.getElementById('tip');
 var zoomEl=document.getElementById('zoom');
-var EM={};
+var EM={};var pkgDepthMap=new Map();var maxPkgDepth=-1;
 
 var posCache=null,posDirty=true;
 
@@ -450,7 +457,7 @@ function buildPackageFlat(pkg,depth){
     hdr.addEventListener('mouseenter',function(){hdr.style.background='linear-gradient(135deg,'+dc.hover1+','+dc.hover2+')';});
     hdr.addEventListener('mouseleave',function(){hdr.style.background='linear-gradient(135deg,'+dc.hdr1+','+dc.hdr2+')';});
     el.appendChild(hdr);
-    cvs.appendChild(el);EM[pkg.id]=el;
+    cvs.appendChild(el);EM[pkg.id]=el;pkgDepthMap.set(pkg.id,depth);if(depth>maxPkgDepth)maxPkgDepth=depth;
     pkg.children.forEach(function(ch){
         if(ch.type==='package')buildPackageFlat(ch,depth+1);
         else{var mel=buildModule(ch);cvs.appendChild(mel);EM[ch.id]=mel;}
@@ -756,6 +763,8 @@ cvs.addEventListener('click',function(e){
 
 function highlightEdgesFor(id,on){
     if(on){
+        // When package edges are hidden and this is a hidden-depth package block, skip
+        if(isPkgEdgeHidden(id,id))return;
         // Highlight existing drawn edges connected to this block
         var paths=svg.querySelectorAll('.e');
         var existingKeys={};
@@ -764,6 +773,8 @@ function highlightEdgesFor(id,on){
             existingKeys[s+'|'+t+'|'+p.dataset.edgeType]=true;
             var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');
             if(connected){
+                // Skip package edges based on level filter
+                if(isPkgEdgeHidden(s,t))continue;
                 highlightEdge(p,true);
                 var hit=p.previousElementSibling;
                 if(hit&&hit.classList.contains('e-hit'))hit.parentNode.appendChild(hit);
@@ -777,6 +788,8 @@ function highlightEdgesFor(id,on){
             if(existingKeys[key])return;
             var connected=s===id||t===id||s.startsWith(id+'.')||t.startsWith(id+'.');
             if(!connected)return;
+            // Skip package edges based on level filter
+            if(isPkgEdgeHidden(s,t))return;
             if(!findPos(s,pos)||!findPos(t,pos))return;
             var svgChildBefore=svg.children.length;
             var dotCountBefore=cvs.querySelectorAll('.conn-dot').length;
@@ -844,6 +857,9 @@ document.getElementById('btn-fit').addEventListener('click',fitToScreen);
 document.getElementById('btn-edges').addEventListener('click',function(){showEdges=!showEdges;this.classList.toggle('active',showEdges);if(!showEdges){document.getElementById('btn-calls').classList.remove('active');document.getElementById('btn-inherit').classList.remove('active');}else{if(showCalls)document.getElementById('btn-calls').classList.add('active');if(showInherit)document.getElementById('btn-inherit').classList.add('active');}scheduleDrawEdges();});
 document.getElementById('btn-calls').addEventListener('click',function(){if(!showEdges){showEdges=true;document.getElementById('btn-edges').classList.add('active');}showCalls=!showCalls;this.classList.toggle('active',showCalls);scheduleDrawEdges();});
 document.getElementById('btn-inherit').addEventListener('click',function(){if(!showEdges){showEdges=true;document.getElementById('btn-edges').classList.add('active');}showInherit=!showInherit;this.classList.toggle('active',showInherit);scheduleDrawEdges();});
+document.getElementById('pkg-level').addEventListener('change',function(){
+  pkgEdgeLevel=this.value;
+});
 document.getElementById('btn-top').addEventListener('click',function(){edgesOnTop=!edgesOnTop;this.classList.toggle('active',edgesOnTop);document.body.classList.toggle('edges-on-top',edgesOnTop);});
 document.getElementById('btn-collapse').addEventListener('click',function(){
     allCollapsed=!allCollapsed;this.classList.toggle('active',allCollapsed);
@@ -887,4 +903,28 @@ new ResizeObserver(function(){updateMinimap();}).observe(mmEl);
 document.addEventListener('keydown',function(e){if(e.target.id==='search-box'||e.target.id==='edge-limit'){if(e.key==='Escape'){e.target.blur();}return;}if(e.key==='f'||e.key==='F')fitToScreen();else if(e.key==='Escape'){document.getElementById('source-panel').classList.remove('open');clearSearch();document.getElementById('search-box').value='';searchTerm='';lockedId=null;clearAllEdgeHL();clearBlockHL();}else if(e.key==='/'||(e.ctrlKey&&e.key==='f')){e.preventDefault();document.getElementById('search-box').focus();}});
 
 buildAll();
+// Populate package level selector based on discovered depths
+(function(){
+  var sel=document.getElementById('pkg-level');
+  for(var d=0;d<=maxPkgDepth;d++){
+    var opt=document.createElement('option');opt.value=d;opt.textContent='L'+d+'+';
+    sel.appendChild(opt);
+  }
+  // "All" option to show all package edges
+  var all=document.createElement('option');all.value='all';all.textContent='All';
+  sel.appendChild(all);
+})();
+var pkgEdgeLevel='none'; // 'all'|'none'|0|1|2...
+function isPkgEdgeHidden(s,t){
+  if(pkgEdgeLevel==='all')return false;
+  var sd=pkgDepthMap.get(s),td=pkgDepthMap.get(t);
+  var sPkg=sd!==undefined,tPkg=td!==undefined;
+  if(!sPkg&&!tPkg)return false; // neither is a package
+  if(pkgEdgeLevel==='none')return true; // hide all package edges
+  var lv=parseInt(pkgEdgeLevel);
+  // Hide if any package endpoint is at depth < lv
+  if(sPkg&&sd<lv)return true;
+  if(tPkg&&td<lv)return true;
+  return false;
+}
 })();"""
