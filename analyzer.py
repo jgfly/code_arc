@@ -162,6 +162,8 @@ class ModuleAnalyzer:
 
     def _collect_imports(self):
         """Collect import statements for name resolution."""
+        # Package containing this module, used to resolve relative imports.
+        pkg_parts = self.module_name.split(".")[:-1]
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -169,6 +171,12 @@ class ModuleAnalyzer:
                     self.imports[local_name] = alias.name
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
+                if node.level > 0:
+                    # Resolve a relative import to an absolute dotted name.
+                    # level=1 refers to this module's own package; each extra
+                    # level pops one more segment off the package path.
+                    base = pkg_parts[: max(0, len(pkg_parts) - (node.level - 1))]
+                    module = ".".join(base + module.split(".")) if module else ".".join(base)
                 for alias in node.names:
                     local_name = alias.asname or alias.name
                     self.from_imports[local_name] = (module, alias.name)
@@ -744,8 +752,15 @@ class CodeAnalyzer:
                     root_candidates.discard(pname)
                     pkg_map[parent_name].children.append(pkg_map[pname])
 
-        # Assign modules to their direct parent package
+        # Assign modules to their direct parent package.
+        # An __init__.py module shares its dotted name with its package
+        # (the "__init__" segment is stripped in _find_python_files), so it
+        # must attach to that package itself — not to its grandparent, which
+        # is what parts[:-1] would otherwise yield.
         for mod in modules:
+            if mod.name in pkg_map:
+                pkg_map[mod.name].children.append(mod)
+                continue
             parts = mod.name.split(".")
             if len(parts) > 1:
                 parent_name = ".".join(parts[:-1])
@@ -769,10 +784,11 @@ class CodeAnalyzer:
         else:
             root = PackageInfo(name=self.project_name, full_name=self.project_name)
 
-        # Add top-level modules (no parent package) to root
+        # Add top-level modules (no parent package) to root.
+        # Skip __init__ modules already attached to their own package above.
         for mod in modules:
             parts = mod.name.split(".")
-            if len(parts) <= 1:
+            if len(parts) <= 1 and mod.name not in pkg_map:
                 root.children.append(mod)
 
         # Collapse single-child chains (package with 1 child that is a package)
