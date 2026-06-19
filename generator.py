@@ -275,6 +275,24 @@ body.edges-on-top #edge-svg{z-index:50}
 #mm-resize{position:absolute;top:0;left:0;width:16px;height:16px;cursor:nw-resize;z-index:2}
 #mm-resize::before{content:'';position:absolute;top:4px;left:4px;width:8px;height:8px;
   border-left:2px solid #555570;border-top:2px solid #555570;opacity:.7}
+/* Toggle between map overview and package/module tree */
+#mm-toggle{position:absolute;top:0;right:0;width:20px;height:18px;cursor:pointer;z-index:3;
+  display:flex;align-items:center;justify-content:center;color:#8888aa;font-size:12px;
+  border-bottom-left-radius:6px;background:#18193080;transition:background .15s,color .15s;
+  user-select:none}
+#mm-toggle:hover{background:#222250;color:#fff}
+#mm-tree{position:absolute;left:0;right:0;top:0;bottom:0;overflow:auto;padding:20px 6px 6px 0;
+  display:none;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px;line-height:1.5}
+#minimap.mode-tree{cursor:default}
+#minimap.mode-tree #mm-tree{display:block}
+#minimap.mode-tree #mm-canvas,#minimap.mode-tree #mm-viewport{display:none}
+.mm-tree-item{display:flex;align-items:center;gap:4px;padding:1px 6px 1px 0;cursor:pointer;
+  color:#aab0d0;white-space:nowrap;border-radius:3px;user-select:none}
+.mm-tree-item:hover{background:#222250;color:#fff}
+.mm-tree-item .mm-ti-ico{flex-shrink:0;width:12px;text-align:center;font-size:9px}
+.mm-tree-item.pkg .mm-ti-ico{color:#caa84a}
+.mm-tree-item.mod .mm-ti-ico{color:#5b9bd5}
+.mm-tree-item .mm-ti-lbl{overflow:hidden;text-overflow:ellipsis}
 
 /* Connection dots on block borders */
 .conn-dot{position:absolute;width:8px;height:8px;border-radius:50%;z-index:200;
@@ -376,6 +394,8 @@ body.edges-on-top #edge-svg{z-index:50}
     <div id="mm-resize"></div>
     <canvas id="mm-canvas"></canvas>
     <div id="mm-viewport"></div>
+    <div id="mm-toggle" title="Tree view">☰</div>
+    <div id="mm-tree"></div>
 </div>
 <div id="legend">
     <h3>Legend</h3>
@@ -915,6 +935,18 @@ svg.addEventListener('pointermove',function(ev){if(findEdgeFromTarget(ev)){tip.s
 svg.addEventListener('pointerleave',function(ev){var p=findEdgeFromTarget(ev);if(!p)return;if(!isLockedConnected(p))highlightEdge(p,false);hideTip();clearBlockHL();},true);
 
 function navigateToBlock(id){var pos=measure(),p=pos[id];if(!p){var parts=id.split('.');for(var i=parts.length-1;i>0;i--){var c=parts.slice(0,i).join('.');if(pos[c]){p=pos[c];break;}}}if(!p)return;var cr=ctnr.getBoundingClientRect();panX=cr.width/2-p.cx*scale;panY=cr.height/2-p.cy*scale;updateTx();scheduleDrawEdges();updateMinimap();}
+// Center the block's TOP-LEFT corner in the main viewport (used by the minimap
+// tree). If the block is collapsed (display:none → zero size), climb to the
+// nearest visible ancestor block.
+function centerBlockTopLeft(id){
+    var pos=measure(),p=pos[id];
+    function hidden(x){return !x||(x.w===0&&x.h===0);}
+    if(hidden(p)){var parts=id.split('.');for(var i=parts.length-1;i>0;i--){var c=parts.slice(0,i).join('.');if(!hidden(pos[c])){p=pos[c];break;}}}
+    if(hidden(p))return;
+    var cr=ctnr.getBoundingClientRect();
+    panX=cr.width/2-p.x*scale;panY=cr.height/2-p.y*scale;
+    updateTx();scheduleDrawEdges();updateMinimap();
+}
 
 cvs.addEventListener('mouseover',function(e){var block=e.target.closest('[data-id]');if(!block)return;hideTip();var id=block.dataset.id;highlightEdgesFor(id,true);hlBlocks(id);});
 cvs.addEventListener('mouseout',function(e){var block=e.target.closest('[data-id]');if(!block)return;var id=block.dataset.id;if(id===lockedId)return;highlightEdgesFor(id,false);clearBlockHL();if(lockedId){highlightEdgesFor(lockedId,true);hlBlocks(lockedId);}});
@@ -1061,13 +1093,57 @@ function updateMinimap(){
     mmEl._map={scale:mmScale,offX:offX,offY:offY,contentScale:scale};
 }
 
-mmEl.addEventListener('click',function(e){if(mmResizing)return;var map=mmEl._map;if(!map)return;var rect=mmEl.getBoundingClientRect();var mx=e.clientX-rect.left,my=e.clientY-rect.top;if(mx<12||my<12||mx>rect.width-12||my>rect.height-12)return;var cx=(mx-map.offX)/map.scale;var cy=(my-map.offY)/map.scale;var cr=ctnr.getBoundingClientRect();panX=cr.width/2-cx*scale;panY=cr.height/2-cy*scale;updateTx();scheduleDrawEdges();updateMinimap();});
+mmEl.addEventListener('click',function(e){if(mmResizing||mmMode==='tree')return;var map=mmEl._map;if(!map)return;var rect=mmEl.getBoundingClientRect();var mx=e.clientX-rect.left,my=e.clientY-rect.top;if(mx<12||my<12||mx>rect.width-12||my>rect.height-12)return;var cx=(mx-map.offX)/map.scale;var cy=(my-map.offY)/map.scale;var cr=ctnr.getBoundingClientRect();panX=cr.width/2-cx*scale;panY=cr.height/2-cy*scale;updateTx();scheduleDrawEdges();updateMinimap();});
 
 var mmResize=document.getElementById('mm-resize');var mmResizing=false,mmRSx=0,mmRSy=0,mmRSw=0,mmRSh=0,mmRSright=0,mmRSbottom=0;
 mmResize.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();mmResizing=true;var r=mmEl.getBoundingClientRect();mmRSx=e.clientX;mmRSy=e.clientY;mmRSw=r.width;mmRSh=r.height;mmRSright=r.right;mmRSbottom=r.bottom;});
 window.addEventListener('mousemove',function(e){if(!mmResizing)return;var dx=e.clientX-mmRSx,dy=e.clientY-mmRSy;var nw=Math.max(120,mmRSw-dx),nh=Math.max(80,mmRSh-dy);mmEl.style.width=nw+'px';mmEl.style.height=nh+'px';mmEl.style.right=(window.innerWidth-mmRSright)+'px';mmEl.style.bottom=(window.innerHeight-mmRSbottom)+'px';updateMinimap();});
 window.addEventListener('mouseup',function(){mmResizing=false;});
 new ResizeObserver(function(){updateMinimap();}).observe(mmEl);
+
+// ========== Minimap: map ⇄ package/module tree toggle ==========
+var mmMode='map'; // 'map' (overview) | 'tree' (clickable pkg/module tree)
+var mmToggle=document.getElementById('mm-toggle');
+var mmTree=document.getElementById('mm-tree');
+function buildMmTree(){
+    mmTree.innerHTML='';
+    function add(node,depth){
+        if(node.type!=='package'&&node.type!=='module')return;
+        var it=document.createElement('div');
+        it.className='mm-tree-item '+(node.type==='package'?'pkg':'mod');
+        it.style.paddingLeft=(6+depth*12)+'px';
+        var ico=document.createElement('span');ico.className='mm-ti-ico';
+        ico.textContent=node.type==='package'?'▣':'▤';
+        var lab=document.createElement('span');lab.className='mm-ti-lbl';
+        lab.textContent=node.label||node.name;lab.title=node.id;
+        it.appendChild(ico);it.appendChild(lab);
+        it.addEventListener('click',function(e){e.stopPropagation();centerBlockTopLeft(node.id);});
+        mmTree.appendChild(it);
+        var children=node.children||[];
+        for(var i=0;i<children.length;i++)add(children[i],depth+1);
+    }
+    if(ND&&ND.type==='package'){add(ND,0);}
+    else if(Array.isArray(ND)){for(var i=0;i<ND.length;i++)add(ND[i],0);}
+}
+mmToggle.addEventListener('click',function(e){
+    e.stopPropagation();
+    mmMode=mmMode==='map'?'tree':'map';
+    mmEl.classList.toggle('mode-tree',mmMode==='tree');
+    if(mmMode==='tree'){mmToggle.textContent='▤';mmToggle.title='Map view';buildMmTree();}
+    else{mmToggle.textContent='☰';mmToggle.title='Tree view';updateMinimap();}
+});
+// Mouse wheel over the minimap:
+//  - tree mode: let the #mm-tree list scroll natively (it has overflow:auto)
+//  - map mode: zoom the main canvas around the viewport center
+mmEl.addEventListener('wheel',function(e){
+    if(mmMode==='tree')return; // native scroll on #mm-tree
+    e.preventDefault();
+    var d=e.deltaY>0?0.92:1.08;
+    var ns=Math.max(0.12,Math.min(3,scale*d));
+    var cr=ctnr.getBoundingClientRect(),cx=cr.width/2,cy=cr.height/2;
+    panX=cx-(cx-panX)*(ns/scale);panY=cy-(cy-panY)*(ns/scale);
+    scale=ns;updateTx();invalidateMeasure();scheduleDrawEdges();updateMinimap();
+},{passive:false});
 
 document.addEventListener('keydown',function(e){if(e.target.id==='search-box'||e.target.id==='edge-limit'){if(e.key==='Escape'){e.target.blur();}return;}if(e.key==='f'||e.key==='F')fitToScreen();else if(e.key==='Escape'){closeNavMenu();document.getElementById('source-panel').classList.remove('open');clearSearch();document.getElementById('search-box').value='';searchTerm='';lockedId=null;clearAllEdgeHL();clearBlockHL();}else if(e.key==='/'||(e.ctrlKey&&e.key==='f')){e.preventDefault();document.getElementById('search-box').focus();}});
 
