@@ -155,21 +155,21 @@ body{font-family:'Segoe UI','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
 #canvas-container.grabbing{cursor:grabbing}
 #canvas{position:absolute;transform-origin:0 0}
 
-/* SVG layer */
-#edge-svg{position:absolute;top:0;left:0;overflow:visible;z-index:1;pointer-events:none}
+/* SVG layer. No z-index by default: the SVG is the first child of #canvas,
+   so blocks (appended after it) paint above it by DOM order. */
+#edge-svg{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
 #edge-svg path.e{pointer-events:none}
 #edge-svg path.e-hit{pointer-events:stroke;cursor:pointer}
 #edge-svg.on-top{z-index:50}
 
-/* Blocks above SVG by default, but below when edges are on-top */
-.module-block,.class-block,.func-block,.method-block{position:relative;z-index:2}
+/* Blocks above SVG by default (DOM order: SVG is the first child of #canvas).
+   Blocks carry no z-index so they don't form a stacking context — this lets
+   the per-block .nav-btn (z-index:60) rise above the edge layer even when
+   edges are on top, keeping the button clickable where edges cross it. */
+.module-block,.class-block,.func-block,.method-block{position:relative}
 
-/* When edges on-top, push blocks below */
-body.edges-on-top .package-block,
-body.edges-on-top .module-block,
-body.edges-on-top .class-block,
-body.edges-on-top .func-block,
-body.edges-on-top .method-block{z-index:1}
+/* When edges on-top, raise the SVG above the blocks. The .nav-btn (z-index:60)
+   still sits above the SVG, so it stays clickable. */
 body.edges-on-top #edge-svg{z-index:50}
 
 .package-block{position:absolute;
@@ -216,8 +216,8 @@ body.edges-on-top #edge-svg{z-index:50}
 
 .func-block{background:linear-gradient(160deg,#142014,#122518);
   border:1px solid #2a6a2a40;border-radius:7px;margin:4px 2px;cursor:pointer;
-  transition:border-color .2s,box-shadow .2s,transform .15s}
-.func-block:hover{border-color:#3a9a3a;box-shadow:0 2px 10px rgba(42,106,42,.15);transform:translateY(-1px)}
+  transition:border-color .2s,box-shadow .2s}
+.func-block:hover{border-color:#3a9a3a;box-shadow:0 4px 14px rgba(42,106,42,.22)}
 .func-header{padding:5px 11px;font-size:12px;font-weight:600;color:#80d880;
   display:flex;align-items:center;gap:5px}
 .func-header .fi{width:15px;height:15px;border-radius:3px;background:rgba(60,160,60,.12);
@@ -228,8 +228,8 @@ body.edges-on-top #edge-svg{z-index:50}
 
 .method-block{background:linear-gradient(160deg,#1e1420,#201828);
   border:1px solid #6a2a6a40;border-radius:7px;margin:3px 2px;cursor:pointer;
-  transition:border-color .2s,box-shadow .2s,transform .15s}
-.method-block:hover{border-color:#9a3a9a;box-shadow:0 2px 10px rgba(106,42,106,.15);transform:translateY(-1px)}
+  transition:border-color .2s,box-shadow .2s}
+.method-block:hover{border-color:#9a3a9a;box-shadow:0 4px 14px rgba(106,42,106,.22)}
 .method-header{padding:4px 11px;font-size:12px;font-weight:600;color:#c888c8;
   display:flex;align-items:center;gap:5px}
 .method-header .fi{width:15px;height:15px;border-radius:3px;background:rgba(150,60,150,.12);
@@ -292,7 +292,7 @@ body.edges-on-top #edge-svg{z-index:50}
 /* Per-block connection list button + dropdown */
 .nav-btn{position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:4px;
   background:#222340cc;border:1px solid #444470;color:#aab0d0;font-size:10px;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;
   opacity:0;pointer-events:none;transition:opacity .15s,background .15s;line-height:1;
   user-select:none}
 .nav-btn:hover{background:#2a2a55;color:#fff}
@@ -356,7 +356,7 @@ body.edges-on-top #edge-svg{z-index:50}
     <select id="pkg-level" title="Show package edges for this depth and below">
       <option value="none" selected>None</option>
     </select>
-    <button class="toolbar-btn" id="btn-top" title="Edges on top layer">Edges Top</button>
+    <button class="toolbar-btn active" id="btn-top" title="Edges on top layer">Edges Top</button>
     <button class="toolbar-btn" id="btn-collapse" title="Collapse all">Collapse</button>
     <div class="toolbar-sep"></div>
     <span style="font-size:11px;color:#555570">Max edges</span>
@@ -420,7 +420,7 @@ var SD=JSON.parse(document.getElementById('d-source').textContent);
 
 var scale=1,panX=40,panY=40;
 var dragging=false,dsx=0,dsy=0,psx=0,psy=0;
-var showEdges=true,showCalls=true,showInherit=true,allCollapsed=false,edgesOnTop=false;
+var showEdges=true,showCalls=true,showInherit=true,allCollapsed=false,edgesOnTop=true;
 var searchTerm="";
 var lockedId=null;
 
@@ -1072,6 +1072,9 @@ new ResizeObserver(function(){updateMinimap();}).observe(mmEl);
 document.addEventListener('keydown',function(e){if(e.target.id==='search-box'||e.target.id==='edge-limit'){if(e.key==='Escape'){e.target.blur();}return;}if(e.key==='f'||e.key==='F')fitToScreen();else if(e.key==='Escape'){closeNavMenu();document.getElementById('source-panel').classList.remove('open');clearSearch();document.getElementById('search-box').value='';searchTerm='';lockedId=null;clearAllEdgeHL();clearBlockHL();}else if(e.key==='/'||(e.ctrlKey&&e.key==='f')){e.preventDefault();document.getElementById('search-box').focus();}});
 
 buildAll();
+// Edges render on the top layer by default (kept above blocks but below the
+// per-block nav button, which sits at z-index:60 outside any block context).
+document.body.classList.toggle('edges-on-top',edgesOnTop);
 // Populate package level selector based on discovered depths
 (function(){
   var sel=document.getElementById('pkg-level');
